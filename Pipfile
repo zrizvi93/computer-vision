@@ -1,0 +1,17 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+cmake = "*"
+face-recognition = "*"
+numpy = "*"
+opencv-python = "<4.3.0.36"
+pyobjc-framework-quartz = "*"
+cpython = "*"
+
+[requires]
+python_version = "3.7"
