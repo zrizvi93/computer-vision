@@ -77,28 +77,38 @@ def LockScreen():
     cmd = """osascript -e 'tell application "system events" to key code 12 using {command down, control down}'"""
     os.system(cmd)
 
-def UnlockScreen():
-    cmd = """osascript<<END
-    tell application "System Events"
-		if ((get name of every process) contains "ScreenSaverEngine") then
-			set pw to (do shell script "security find-generic-password -a {} -w")
-			tell application "ScreenSaverEngine" to quit
-			delay 0.5
-			keystroke return
-			keystroke pw
-			keystroke return
-			-- set require password to wake of security preferences to false
-		end if
-	end tell
-    END""".format(USER)
-    p = subprocess.Popen(UnlockScreen, shell=True)
-    p.terminate()
-    return p
+
+# def UnlockScreen():
+#     cmd = """osascript<<END
+#     tell application "System Events"
+# 		if ((get name of every process) contains "ScreenSaverEngine") then
+# 			set pw to (do shell script "security find-generic-password -a {} -w")
+# 			tell application "ScreenSaverEngine" to quit
+# 			delay 0.5
+# 			keystroke return
+# 			keystroke pw
+# 			keystroke return
+# 			-- set require password to wake of security preferences to false
+# 		end if
+# 	end tell
+#     END""".format(USER)
+#     os.system(cmd)
+#     # p = Popen(UnlockScreen(), shell=True)
+#     # p.terminate()
+#     # return p
 
 def Sentry():
-    p = re.compile("(.*)\.jpg")
-    known_id_paths = [WHITELIST_PATH + f for f in os.listdir(WHITELIST_PATH) if p.match(f)]
-    known_id_names = [p.match(f).group(1) for f in os.listdir(WHITELIST_PATH) if p.match(f)]
+    p = re.compile("(.*)_\d+\.jpg")
+    known_id_paths = []
+    known_id_names = []
+    known_id_access = []
+
+    for root, dirs, files in os.walk(KNOWN_PATH):
+        for x in files:
+            if p.match(x):
+                known_id_paths.append(os.path.join(root,x))
+                known_id_names.append(p.match(x).group(1))
+                known_id_access.append(os.path.basename(root))
 
     known_face_encodings = []
     known_face_names = []
@@ -117,72 +127,81 @@ def Sentry():
 
     prev_frame_face_names = []
 
-    # Get a reference to webcam #0 (the default one)
-    video_capture = cv2.VideoCapture(0)
+    while True:
+        # Get a reference to webcam #0 (the default one)
+        video_capture = cv2.VideoCapture(0)
 
-    curr_ret, current_frame = video_capture.read()
+        curr_ret, current_frame = video_capture.read()
 
-    if curr_ret and process_this_frame:
-        # Resize frame of video to 1/4 size for faster face recognition processing
-        small_frame = cv2.resize(current_frame, (0, 0), fx=0.25, fy=0.25)
+        if curr_ret and process_this_frame:
+            # Resize frame of video to 1/4 size for faster face recognition processing
+            small_frame = cv2.resize(current_frame, (0, 0), fx=0.25, fy=0.25)
 
-        # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
-        rgb_small_frame = small_frame[:, :, ::-1]
+            # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
+            rgb_small_frame = small_frame[:, :, ::-1]
 
-        # Find all the faces and face encodings in the current frame of video
-        face_locations = face_recognition.face_locations(rgb_small_frame)
-        face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+            # Find all the faces and face encodings in the current frame of video
+            face_locations = face_recognition.face_locations(rgb_small_frame)
+            face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
 
-        face_names = []
+            face_names = []
 
-        for face_encoding in face_encodings:
-            # See if the face is a match for the known face(s)
-            matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
-            name = "Unknown"
+            for face_encoding in face_encodings:
+                # See if the face is a match for the known face(s)
+                matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+                name = "Unknown"
 
-            # If a match was found, use the known face with the smallest distance to the new face
-            face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
-            best_match_index = np.argmin(face_distances)
-            if matches[best_match_index]:
-                name = known_face_names[best_match_index]
+                # If a match was found, use the known face with the smallest distance to the new face
+                face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+                best_match_index = np.argmin(face_distances)
+                if matches[best_match_index]:
+                    name = known_face_names[best_match_index]
 
-            face_names.append(name)
+                face_names.append(name)
 
-        conditions = ['webcam-me' in prev_frame_face_names and 'webcam-me' not in face_names
-            , 'webcam-me' not in prev_frame_face_names and 'webcam-me' in face_names
-            , prev_frame_face_names is None]
-        output = ['User Left', 'User Returned', 'First Frame']
-        line_of_sight = np.select(conditions, output, default='No Change').item(0)
+            conditions = ['admin' in prev_frame_face_names and 'admin' not in face_names
+                , 'admin' not in prev_frame_face_names and 'admin' in face_names
+                , prev_frame_face_names is None]
+            output = ['User Left', 'User Returned', 'First Frame']
+            line_of_sight = np.select(conditions, output, default='No Change').item(0)
 
-        prev_frame_face_names = face_names
+            prev_frame_face_names = face_names
 
-        if line_of_sight == 'User Left':
-            LockScreen()
-        elif line_of_sight == 'User Returned':
-            UnlockScreen()
+            if line_of_sight == 'User Left':
+                LockScreen()
+            elif line_of_sight == 'User Returned':
+                UnlockScreen()
+            else:
+                pass
+
+            #     switch (line_of_sight) {
+            #         case "User Left":  LockScreen();
+            #         break;
+            #         case "User Returned": UnlockScreen();
+            #         break;
+            #         case "No Change": pass;
+            #         break;
+            #     }
+
+            print("read frame")
+
         else:
-            pass
+            print("couldn't read frame")
 
-        #     switch (line_of_sight) {
-        #         case "User Left":  LockScreen();
-        #         break;
-        #         case "User Returned": UnlockScreen();
-        #         break;
-        #         case "No Change": pass;
-        #         break;
-        #     }
+        print(face_names)
+        print(prev_frame_face_names)
+        print(line_of_sight)
 
-        print("read frame")
+        k = cv2.waitKey(1)
+        if k % 256 == 27:
+            # ESC pressed
+            print("Escape hit, closing...")
+            video_capture.release()
+            cv2.destroyAllWindows()
+            break
 
-    else:
-        print("couldn't read frame")
-
-    print(face_names)
-    print(prev_frame_face_names)
-    print(line_of_sight)
-
-    video_capture.release()
-    cv2.destroyAllWindows()
+    # video_capture.release()
+    # cv2.destroyAllWindows()
 
 
 os.system("unset HISTFILE") # temporarily disable bash history
